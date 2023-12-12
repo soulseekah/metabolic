@@ -22,6 +22,13 @@ No time to find the hotspots? `metabolic/metabolic()` will automatically queue a
 
 ### `metabolic/metabolic( bool $activate )`
 
+## Development
+
+- `composer install --dev`
+- `git clone --depth=1 git@github.com:WordPress/wordpress-develop.git`
+- `cd wordpress-develop && npm i && npm run build; cd ..`
+- `vendor/bin/phpunit`
+
 ## TODO
 
 - [ ] Concept
