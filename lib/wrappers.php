@@ -2,22 +2,27 @@
 
 namespace metabolic;
 
-function metabolic( bool $activate = true ) {
+if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+	// Collect useful debugging information.
+	Metabolic::getInstance()->debug( true );
+}
+
+function metabolize( bool $activate = true ) {
 	$metabolic = Metabolic::getInstance();
 
 	try {
-		return $metabolic->metabolic( $activate );
+		return $metabolic->metabolize( $activate );
 	} catch ( \Exception $e ) {
 		// TODO: Log an error
 		return false;
 	}
 }
 
-function queue_meta_updates( array $args ): bool {
+function defer_meta_updates( array $args ): bool {
 	$metabolic = Metabolic::getInstance();
 
 	try {
-		return $metabolic->queue( $args );
+		return $metabolic->defer( $args );
 	} catch ( \Exception $e ) {
 		// TODO: Log an error
 		return false;

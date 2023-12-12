@@ -5,20 +5,20 @@ A WordPress plugin and developer API to optimize post, user, taxonomy, site, ter
 ## Usage
 
 - Install as a WordPress plugin (mu-plugin) or add it to your project as a composer dependency (`composer require soulseekah/metabolic`).
-- Call `metabolic\queue_meta_updates()`.
+- Call `metabolic\defer_meta_updates()`.
 - Perform a massive amount of meta update operations.
 - Call `metabolic\commit_meta_updates()`.
 - Enjoy reduced database load.
 
 ## Tips
 
-- `use metabolic\{queue_meta_updates, commit_meta_updates}` at the top of your file.
+- `use metabolic\{defer_meta_updates, commit_meta_updates}` at the top of your file.
 
-No time to find your hotspots? `metabolic\metabolic()` will automatically queue and commit sequential adds, updates and deletes as needed. Boost this up.
+No time to find your hotspots? `metabolic\metabolic()` will automatically defer (queue) and commit sequential adds, updates and deletes as needed. Boost this up.
 
 ## API
 
-### `metabolic\queue_meta_updates( array $args )`
+### `metabolic\defer_meta_updates( array $args )`
 
 ### `metabolic\commit_meta_updates( array $args )`
 
@@ -43,5 +43,6 @@ No time to find your hotspots? `metabolic\metabolic()` will automatically queue 
 - [ ] Documentation
 - [ ] Recipes (common hooks to metabolize)
 - [ ] Tests
-- [ ] Auto-queue and auto-commit
+- [ ] Auto-defer and auto-commit
 - [ ] Do it for options as well
+- [ ] i18n
