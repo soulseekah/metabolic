@@ -26,7 +26,10 @@ No time to find the hotspots? `metabolic/metabolic()` will automatically queue a
 
 - `composer install --dev`
 - `git clone --depth=1 git@github.com:WordPress/wordpress-develop.git`
-- `cd wordpress-develop && npm i && npm run build; cd ..`
+- `cd wordpress-develop && npm i && npm run build:dev; cd ..`
+- `cd wordpress-develop; cp wp-tests-config-sample.php wp-tests-config.php; vim wp-tests-config.php`
+- set the test database credentials and `:wq` then `cd ..`
+- make sure the database exists
 - `vendor/bin/phpunit`
 
 ## TODO
