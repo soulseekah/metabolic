@@ -24,19 +24,46 @@ final class Metabolic {
 	private bool $deferring = false;
 
 	/**
-	 * Debugging in progress.
+	 * Whether autocommitting on error should be done.
+	 *
+	 * Otherwise an exception will be thrown.
+	 *
+	 * @var bool
 	 */
-	private bool $debug = false;
+	private bool $autocommit = true;
 
 	/**
-	 * Debug tracing.
-	 *
-	 * @see metabolic\Metabolic::inspect()
-	 * @see metabolic\Metabolic::debug()
+	 * The meta types that are to be deferred.
 	 *
 	 * @var array
 	 */
-	private array $traces = [];
+	private array $types = [];
+
+	/**
+	 * The main metabolic queue.
+	 *
+	 * @var array
+	 */
+	private array $queue = [];
+
+	/**
+	 * The metabolic SQL builder.
+	 *
+	 * @var metabolic\SQLBuilder
+	 */
+	private ?SQLBuilder $builder = null;
+
+	/**
+	 * The metabolic tracer (debug, metrics).
+	 *
+	 * @var metabolic\SQLBuilder
+	 */
+	private ?Tracer $tracer = null;
+
+	/**
+	 * Debugging in progress.
+	 */
+	private bool $debug = false;
 
 	/**
 	 * Whether proper shutdown procedures have been performed or not.
@@ -45,12 +72,19 @@ final class Metabolic {
 	 */
 	private bool $shutdown_completed = false;
 
-	private function __construct() {
-		add_action( 'shutdown', [ $this, '_shutdown' ] );
+	private function __construct( SQLBuilder $builder, Tracer $tracer ) {
+		add_action( 'shutdown', [ $this, '_shutdown' ], PHP_INT_MAX );
 
 		if ( ! defined( 'DOING_METABOLIC_TESTS' ) ) {
 			// This is the catch-all that should never happen in theory.
 			register_shutdown_function( [ $this, '_shutdown_fallback' ] );
+		}
+
+		$this->builder = $builder;
+		$this->tracer = $tracer;
+
+		if ( $this->debug ) {
+			$this->trace( '__construct' );
 		}
 	}
 
@@ -61,16 +95,23 @@ final class Metabolic {
 	 * Having more than one will yield duplicate queries, conflicts,
 	 * and futher destructive behavior.
 	 */
-	public static function getInstance(): Metabolic {
-		return self::$instance ??= new self();
+	public static function getInstance( SQLBuilder $builder = null, Tracer $tracer = null ): Metabolic {
+		if ( is_null( $builder ) ) {
+			$builder = new SQLBuilder();
+		}
+
+		if ( is_null( $tracer ) ) {
+			$tracer = new Tracer();
+		}
+
+		return self::$instance ??= new self( $builder, $tracer );
 	}
 
 	/**
 	 * Start queuing up meta calls.
 	 *
-	 * @param string|array $type The type of meta/option deferral to set. Default 'all'
-	 *                           Can be a mixture of 'post', 'user', 'comment',
-	 *                           'taxonomy', 'term', 'option' or 'all'.
+	 * @param string|array $type The type of meta deferral to set. Default 'all'
+	 *                           Can be a mixture of 'post', 'user', 'comment', 'term' or 'all'.
 	 * @param bool $autocommit   Whether to throw an exception on attempted intermittent
 	 *                           reads with rollback, or to autocommit before a read. A
 	 *                           warning will be generated noting that metabolism has stopped.
@@ -78,7 +119,7 @@ final class Metabolic {
 	public function defer( string|array $type = 'all', bool $autocommit = false ): bool {
 		if ( $this->deferring ) {
 			if ( $this->debug ) {
-				foreach ( $this->inspect()['traces'] as $previous_trace ) {
+				foreach ( $this->tracer->getTraces() as $previous_trace ) {
 					if ( ! $previous_trace['committed'] ) {
 						$trace = 'Uncommitted deferral in progress in ' . $previous_trace['defer_backtrace'];
 					}
@@ -90,12 +131,33 @@ final class Metabolic {
 			throw new \Exception( "Metabolism already in progress. $trace" );
 		}
 
-		if ( $this->debug ) {
-			$this->traces[] = [
-				'backtrace' => wp_debug_backtrace_summary(),
-				'committed' => false,
-			];
+		if ( ! is_array( $type ) ) {
+			$types = [ $type ];
 		}
+
+		foreach ( $types as $type ) {
+			if ( ! in_array( $type, [ 'all', 'post', 'comment', 'term', 'user' ], true ) ) {
+				throw new \Exception( "Unknown deferral type: $type" );
+			}
+		}
+
+		if ( in_array( 'all', $types ) ) {
+			$types = [ 'post', 'comment', 'term', 'user' ];
+		}
+
+		if ( $this->debug ) {
+			$this->tracer->trace( 'defer', [
+				'types' => $types,
+				'autocommit' => $autocommit,
+				'committed' => false,
+			] );
+		}
+
+		$this->_add_filters();
+
+		$this->autocommit = $autocommit;
+
+		$this->types = $types;
 
 		return $this->deferring = true;
 	}
@@ -107,9 +169,63 @@ final class Metabolic {
 	}
 
 	/**
-	 * Discard all queued meta calls, reset state.
+	 * Discard all queued meta calls, reset queue state.
 	 */
 	public function flush(): void {
+	}
+
+	/**
+	 * Add all the necessary short-circuit actions for
+	 * updates, adds and deletes and gets.
+	 *
+	 * @internal
+	 */
+	private function _add_filters(): void {
+		add_filter( 'update_post_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		add_filter( 'update_term_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		add_filter( 'update_user_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		add_filter( 'update_comment_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+
+		add_filter( 'add_post_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		add_filter( 'add_term_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		add_filter( 'add_user_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		add_filter( 'add_comment_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+
+		add_filter( 'delete_post_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		add_filter( 'delete_term_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		add_filter( 'delete_user_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		add_filter( 'delete_comment_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+
+		add_filter( 'get_post_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
+		add_filter( 'get_term_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
+		add_filter( 'get_user_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
+		add_filter( 'get_comment_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
+
+		if ( $this->debug ) {
+			$this->trace( '_add_filters' );
+		}
+	}
+
+	private function _remove_filters(): void {
+		remove_filter( 'update_post_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		remove_filter( 'update_term_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		remove_filter( 'update_user_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		remove_filter( 'update_comment_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+
+		remove_filter( 'add_post_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		remove_filter( 'add_term_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		remove_filter( 'add_user_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		remove_filter( 'add_comment_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+
+		remove_filter( 'delete_post_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		remove_filter( 'delete_term_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		remove_filter( 'delete_user_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		remove_filter( 'delete_comment_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+
+		remove_filter( 'get_post_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
+		remove_filter( 'get_term_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
+		remove_filter( 'get_user_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
+		remove_filter( 'get_comment_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
 	}
 
 	/**
@@ -117,11 +233,30 @@ final class Metabolic {
 	 */
 	public function _reset(): void {
 		if ( ! defined( 'DOING_METABOLIC_TESTS' ) ) {
-			throw new \Exception( 'metabolic\Metabolic::_reset is only available during tests.' );
+			throw new \Exception( 'metabolic\Metabolic::_reset is only available during tests. Sorry.' );
 		}
 
-		$this->traces = [];
+		$this->tracer->reset();
+		$this->queue = [];
 		$this->shutdown_completed = false;
+	}
+
+	/**
+	 * Queue up metadata changes from WordPress hooks.
+	 *
+	 * @internal
+	 */
+	public function _queue(): mixed {
+		var_dump( current_filter() );
+		exit;
+	}
+
+	/**
+	 * get_$type_metadata hook has been called.
+	 *
+	 * @internal
+	 */
+	public function _interrupt(): mixed {
 	}
 
 	/**
@@ -153,6 +288,7 @@ final class Metabolic {
 	 * Inspect queue internals.
 	 */
 	public function inspect(): array {
+		return [];
 	}
 
 	/**
@@ -162,9 +298,13 @@ final class Metabolic {
 	}
 
 	public function __serialize(): array {
+		throw new \Exception( 'Metabolic cannot be serialized. For you own sake.' );
 	}
 
 	public function __debugInfo(): array {
+		return [
+			'__' => 'Struggling with an issue in Metabolic? Check out https://github.com/soulseekah/metabolic/issues and hit that star button',
+		];
 	}
 
 	/**

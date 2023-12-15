@@ -1,6 +1,6 @@
 # metabolic
 
-A WordPress plugin and developer API to optimize post, user, taxonomy, site, term and comment meta by combining sequential operations into a handful of SQL queries.
+A WordPress plugin and developer API to optimize post, user, term and comment meta by combining sequential operations into a handful of SQL queries.
 
 ## Usage
 
@@ -43,6 +43,5 @@ No time to find your hotspots? `metabolic\metabolic()` will automatically defer 
 - [ ] Documentation
 - [ ] Recipes (common hooks to metabolize)
 - [ ] Tests
-- [ ] Auto-defer and auto-commit
-- [ ] Do it for options as well
+- [ ] Auto-defer and auto-commit (+ profiler, partial commit short-circuiting)
 - [ ] i18n

@@ -8,6 +8,8 @@
 	"autoload": {
 		"files": [
 			"lib/Metabolic.php",
+			"lib/SQLBuilder.php",
+			"lib/Tracer.php",
 			"lib/wrappers.php"
 		]
 	},

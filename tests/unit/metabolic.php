@@ -15,5 +15,10 @@ class Test_Metabolic_Class extends MB_UnitTestCase {
 			$metabolic, metabolic\Metabolic::getInstance(),
 			'Metabolic is not functioning like a singleton'
 		);
+
+		$this->assertSame(
+			$this->metabolic, metabolic\Metabolic::getInstance(),
+			'Test Metabolic instance is not functioning like a singleton'
+		);
 	}
 }
