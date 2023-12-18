@@ -12,12 +12,26 @@ namespace metabolic;
 class Tracer {
 	private array $traces = [];
 
-	private function trace( string $action, array $data ) {
-		$traces[] = [
+	public function trace( string $action, array $data = [] ): void {
+		$this->traces[] = [
 			'time' => microtime( true ),
-			'backtrace' => wp_get_debug_backtrace(),
+			'backtrace' => \wp_debug_backtrace_summary(),
 			'action' => $action,
 			'data' => $data,
 		];
+	}
+
+	/**
+	 * Retreive trace.
+	 */
+	public function getTrace(): array {
+		return $this->traces;
+	}
+
+	/**
+	 * Reset trace.
+	 */
+	public function reset(): void {
+		$this->traces = [];
 	}
 }

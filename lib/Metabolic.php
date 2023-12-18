@@ -84,7 +84,7 @@ final class Metabolic {
 		$this->tracer = $tracer;
 
 		if ( $this->debug ) {
-			$this->trace( '__construct' );
+			$this->tracer->trace( '__construct' );
 		}
 	}
 
@@ -202,7 +202,7 @@ final class Metabolic {
 		add_filter( 'get_comment_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
 
 		if ( $this->debug ) {
-			$this->trace( '_add_filters' );
+			$this->tracer->trace( '_add_filters' );
 		}
 	}
 
@@ -236,6 +236,8 @@ final class Metabolic {
 			throw new \Exception( 'metabolic\Metabolic::_reset is only available during tests. Sorry.' );
 		}
 
+		$this->_remove_filters();
+		$this->deferring = false;
 		$this->tracer->reset();
 		$this->queue = [];
 		$this->shutdown_completed = false;
@@ -247,8 +249,62 @@ final class Metabolic {
 	 * @internal
 	 */
 	public function _queue(): mixed {
-		var_dump( current_filter() );
-		exit;
+		if ( ! $current_filter = current_filter() ) {
+			// TODO: $autocommit and return false?
+			throw new \Exception( 'Metabolic::_queue called with no filter.' );
+		}
+
+		if ( ! preg_match( '#^(add|update|delete)_(post|comment|term|user)_metadata$#', $current_filter, $matches ) ) {
+			throw new \Exception( "MetabolicMetabolic::_queue called with invalid filter: $current_filter" );
+		}
+
+		if ( ! $this->deferring ) {
+			throw new \Exception( 'Metabolic::_queue not deferring.' );
+		}
+
+		list( $_, $action, $type ) = $matches;
+
+		if ( empty( $args = func_get_args() ) ) {
+			throw new \Exception( "Metabolic::_queue called with empty arguments for $current_filter" );
+		}
+
+		if ( count( $args ) !== 5 ) {
+			throw new \Exception( "Metabolic::_queue called with unexpected number of arguments for $current_filter" );
+		}
+
+		// add: $check, $object_id, $meta_key, $meta_value, $unique
+		// update: $check, $object_id, $meta_key, $meta_value, $prev_value
+		// delete: $check, $object_id, $meta_key, $meta_value, $delete_all
+		list( $check, $object_id, $meta_key, $meta_value, $fifth_arg ) = $args;
+
+		if ( $check !== null ) {
+			throw new \Exception( "Metabolic::_queue called with failing short-circuit check for $current_filter" );
+		}
+
+		$fifth_arg_key = [
+			'add' => 'unique',
+			'update' => 'prev_value',
+			'delete' => 'delete_all',
+		][ $action ];
+
+		if ( $this->debug ) {
+			$this->tracer->trace( '_queue', [
+				'action' => $action,
+				'type' => $type,
+				'key' => $meta_key,
+			] );
+		}
+
+		$this->queue []= [
+			'action' => $action,
+			'type' => $type,
+			'object_id' => $object_id,
+			'meta_key' => $meta_key,
+			'meta_value' => $meta_value,
+			$fifth_arg_key => $fifth_arg,
+		];
+
+		return true;
 	}
 
 	/**
@@ -257,6 +313,9 @@ final class Metabolic {
 	 * @internal
 	 */
 	public function _interrupt(): mixed {
+		if ( ! $current_filter = current_filter() ) {
+			throw new \Exception( 'Metabolic::_interrupt called with no filter.' );
+		}
 	}
 
 	/**
@@ -288,13 +347,20 @@ final class Metabolic {
 	 * Inspect queue internals.
 	 */
 	public function inspect(): array {
-		return [];
+		if ( ! $this->debug ) {
+			throw new \Exception( 'Metabolic inspection is only possible in debug mode.' );
+		}
+
+		return [
+			'queue' => $this->queue,
+		];
 	}
 
 	/**
 	 * Enable debugging and metrics.
 	 */
 	public function debug( bool $debug = true ): void {
+		$this->debug = $debug;
 	}
 
 	public function __serialize(): array {

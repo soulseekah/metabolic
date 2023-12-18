@@ -18,7 +18,7 @@ function metabolize( bool $activate = true ) {
 	}
 }
 
-function defer_meta_updates( array $args ): bool {
+function defer_meta_updates( array $args = [] ): bool {
 	$metabolic = Metabolic::getInstance();
 
 	try {

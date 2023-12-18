@@ -22,9 +22,23 @@ class Test_WordPress_Integration extends MB_UnitTestCase {
 		foreach ( $types as $type ) {
 			foreach ( $actions as $action ) {
 				$filter = "{$action}_{$type}_metadata";
+				$callable = $action === 'get' ? '_interrupt' : '_queue';
 				$this->assertFalse(
-					has_filter( $filter, [ $this->metabolic, '_queue' ] ),
-					"Metabolic::_queue is hooked into $filter"
+					has_filter( $filter, [ $this->metabolic, $callable ] ),
+					"Metabolic::_queue is hooked into $filter without a deferral"
+				);
+			}
+		}
+
+		$this->assertTrue( $this->metabolic->defer() );
+
+		foreach ( $types as $type ) {
+			foreach ( $actions as $action ) {
+				$filter = "{$action}_{$type}_metadata";
+				$callable = $action === 'get' ? '_interrupt' : '_queue';
+				$this->assertTrue(
+					has_filter( $filter, [ $this->metabolic, $callable ] ) === PHP_INT_MAX,
+					"Metabolic::$callable is not hooked into $filter for some reason"
 				);
 			}
 		}
