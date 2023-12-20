@@ -169,6 +169,35 @@ final class Metabolic {
 		if ( ! $this->deferring ) {
 			throw new \Exception( 'Metabolic::commit not deferring.' );
 		}
+
+		if ( $this->debug ) {
+			$this->tracer->trace( 'commit' );
+		}
+
+		// TODO: optimize same calls, deletes, etc.
+
+		foreach ( $this->queue as $item ) {
+
+			switch ( $item['action'] ) {
+				case 'add':
+					$this->builder->push(
+						'insert',
+						$this->builder->get_table( $item['type'] ),
+						[
+							$this->builder->get_object_id_column( $item['type'] ) => $item['object_id'],
+							'meta_key' => $item['meta_key'],
+							'meta_value' => $item['meta_value'],
+						]
+					);
+					break;
+			}
+		}
+
+		$this->builder->execute( $this->tracer );
+
+		$this->deferring = false;
+
+		return true;
 	}
 
 	/**
@@ -186,25 +215,16 @@ final class Metabolic {
 	 * @internal
 	 */
 	private function _add_filters(): void {
-		add_filter( 'update_post_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		add_filter( 'update_term_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		add_filter( 'update_user_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		add_filter( 'update_comment_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-
-		add_filter( 'add_post_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		add_filter( 'add_term_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		add_filter( 'add_user_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		add_filter( 'add_comment_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-
-		add_filter( 'delete_post_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		add_filter( 'delete_term_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		add_filter( 'delete_user_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		add_filter( 'delete_comment_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-
-		add_filter( 'get_post_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
-		add_filter( 'get_term_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
-		add_filter( 'get_user_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
-		add_filter( 'get_comment_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
+		foreach ( [ 'add', 'update', 'delete', 'get' ] as $action ) {
+			foreach ( [ 'post', 'term', 'comment', 'user' ] as $type ) {
+				add_filter(
+					"{$action}_{$type}_metadata",
+					[ $this, ( $action === 'get' ) ? '_interrupt' : '_queue' ],
+					PHP_INT_MAX,
+					5
+				);
+			}
+		}
 
 		if ( $this->debug ) {
 			$this->tracer->trace( '_add_filters' );
@@ -212,25 +232,19 @@ final class Metabolic {
 	}
 
 	private function _remove_filters(): void {
-		remove_filter( 'update_post_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		remove_filter( 'update_term_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		remove_filter( 'update_user_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		remove_filter( 'update_comment_metadata', [ $this, '_queue' ], PHP_INT_MAX );
+		foreach ( [ 'add', 'update', 'delete', 'get' ] as $action ) {
+			foreach ( [ 'post', 'term', 'comment', 'user' ] as $type ) {
+				remove_filter(
+					"{$action}_{$type}_metadata",
+					[ $this, ( $action === 'get' ) ? '_interrupt' : '_queue' ],
+					PHP_INT_MAX
+				);
+			}
+		}
 
-		remove_filter( 'add_post_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		remove_filter( 'add_term_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		remove_filter( 'add_user_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		remove_filter( 'add_comment_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-
-		remove_filter( 'delete_post_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		remove_filter( 'delete_term_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		remove_filter( 'delete_user_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-		remove_filter( 'delete_comment_metadata', [ $this, '_queue' ], PHP_INT_MAX );
-
-		remove_filter( 'get_post_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
-		remove_filter( 'get_term_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
-		remove_filter( 'get_user_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
-		remove_filter( 'get_comment_metadata', [ $this, '_interrupt' ], PHP_INT_MAX );
+		if ( $this->debug ) {
+			$this->tracer->trace( '_remove_filters' );
+		}
 	}
 
 	/**

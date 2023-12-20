@@ -8,6 +8,22 @@ class Test_WordPress_Integration extends MB_UnitTestCase {
 		);
 	}
 
+	public function test_wrapper_functions_exist() {
+		$wrapper_functions = [
+			'metabolic\metabolize',
+			'metabolic\defer_meta_updates',
+			'metabolic\commit_meta_updates',
+			'metabolic\flush_meta_updates',
+		];
+
+		foreach ( $wrapper_functions as $wrapper_function ) {
+			$this->assertTrue(
+				function_exists( $wrapper_function ),
+				"wrapper function $wrapper_function does not exist"
+			);
+		}
+	}
+
 	public function test_shutdown_action_added(): void {
 		$this->assertTrue(
 			has_action( 'shutdown', [ $this->metabolic, '_shutdown' ] ) === PHP_INT_MAX,
@@ -42,5 +58,34 @@ class Test_WordPress_Integration extends MB_UnitTestCase {
 				);
 			}
 		}
+	}
+
+	public function test_add_meta_simplest(): void {
+		global $wpdb;
+
+		$post = $this->factory->post->create();
+		$this->resetQueries();
+
+		$this->assertTrue( metabolic\defer_meta_updates(), 'defer_meta_updates() returned false' );
+
+		$this->assertTrue( add_post_meta( $post, 'simple', 'value' ), 'add_post_meta() failed' );
+
+		$this->assertQueryCount( 0 );
+
+		$this->assertNull(
+			$wpdb->get_var( "SELECT meta_value FROM $wpdb->postmeta WHERE meta_key = 'simple'" ),
+			'add_post_meta() was not short-circuited'
+		);
+		$this->resetQueries();
+
+		$this->assertTrue( metabolic\commit_meta_updates() );
+
+		$this->assertQueryCount( 1 );
+
+		$this->assertEquals(
+			'value',
+			$wpdb->get_var( "SELECT meta_value FROM $wpdb->postmeta WHERE meta_key = 'simple'" ),
+			'committed add_post_meta() did not work'
+		);
 	}
 }
