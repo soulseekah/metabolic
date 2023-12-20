@@ -24,7 +24,7 @@ class Tracer {
 	/**
 	 * Retreive trace.
 	 */
-	public function getTrace(): array {
+	public function getTraces(): array {
 		return $this->traces;
 	}
 

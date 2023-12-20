@@ -1,4 +1,5 @@
 <?php
+
 class Test_Metabolic_Class extends MB_UnitTestCase {
 	public function test_final(): void {
 		$class = new ReflectionClass( 'metabolic\Metabolic' );
@@ -56,6 +57,12 @@ class Test_Metabolic_Class extends MB_UnitTestCase {
 		$this->metabolic->_queue( true, 1, 'meta_key', 'meta_value', false );
 	}
 
+	public function test_invalid_queue_call_not_deferring(): void {
+		$this->expectExceptionMessage( 'Metabolic::_queue not deferring.' );
+		$this->mock_current_filter( 'update_term_metadata' );
+		$this->metabolic->_queue( null, 1, 'meta_key', 'meta_value', false );
+	}
+
 	public function test_queue_simple(): void {
 		$this->mock_current_filter( 'add_post_metadata' );
 		$this->metabolic->defer();
@@ -108,5 +115,64 @@ class Test_Metabolic_Class extends MB_UnitTestCase {
 				], $queue, "Unexpected queue structure and data with $filter" );
 			}
 		}
+	}
+
+	public function test_invalid_interrupt_call_no_filter(): void {
+		$this->expectExceptionMessage( 'Metabolic::_interrupt called with no filter.' );
+		$this->metabolic->defer();
+		$this->metabolic->_interrupt();
+	}
+
+	public function test_invalid_interrupt_call_invalid_filter(): void {
+		$this->expectExceptionMessage( 'Metabolic::_interrupt called with invalid filter: invalid_test_filter' );
+		$this->mock_current_filter( 'invalid_test_filter' );
+		$this->metabolic->defer();
+		$this->metabolic->_interrupt();
+	}
+
+	public function test_invalid_interrupt_call_invalid_args(): void {
+		$this->expectExceptionMessage( 'Metabolic::_interrupt called with empty arguments for get_comment_metadata' );
+		$this->mock_current_filter( 'get_comment_metadata' );
+		$this->metabolic->defer();
+		$this->metabolic->_interrupt();
+	}
+
+	public function test_invalid_interrupt_call_count_args(): void {
+		$this->expectExceptionMessage( 'Metabolic::_interrupt called with unexpected number of arguments for get_user_metadata' );
+		$this->mock_current_filter( 'get_user_metadata' );
+		$this->metabolic->defer();
+		$this->metabolic->_interrupt( null, 1, 'meta_key', true );
+	}
+
+	public function test_invalid_interrupt_mismatch_type(): void {
+		$this->expectExceptionMessage( 'Metabolic::_interrupt called with mismatched $meta_type (comment != user)' );
+		$this->mock_current_filter( 'get_user_metadata' );
+		$this->metabolic->defer();
+		$this->metabolic->_interrupt( null, 1, 'meta_key', true, 'comment' );
+	}
+
+	public function test_invalid_interrupt_call_non_null_check(): void {
+		$this->expectExceptionMessage( 'Metabolic::_interrupt called with failing short-circuit check for get_term_metadata' );
+		$this->mock_current_filter( 'get_term_metadata' );
+		$this->metabolic->defer();
+		$this->metabolic->_interrupt( true, 1, 'meta_key', true, 'term' );
+	}
+
+	public function test_invalid_interrupt_call_not_deferring(): void {
+		$this->expectExceptionMessage( 'Metabolic::_interrupt not deferring.' );
+		$this->mock_current_filter( 'get_user_metadata' );
+		$this->metabolic->_interrupt( null, 1, 'meta_key', true, 'user' );
+	}
+
+	public function test_commit_not_deferring() {
+		$this->expectExceptionMessage( 'Metabolic::commit not deferring.' );
+		$this->metabolic->commit();
+	}
+
+	public function test_defer_after_defer() {
+		$this->expectExceptionMessage( 'Metabolism already in progress. Turn on debugging with Metabolic::debug() for debugging information.' );
+		$this->metabolic->debug( false );
+		$this->metabolic->defer();
+		$this->metabolic->defer();
 	}
 }

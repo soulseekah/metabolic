@@ -2,3 +2,5 @@
 vendor
 wordpress-develop
 .phpunit.result.cache
+coverage
+.DS_Store

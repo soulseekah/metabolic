@@ -7,6 +7,7 @@ class MB_UnitTestCase extends WP_UnitTestCase {
 		parent::setUp();
 
 		$this->_metabolic = metabolic\Metabolic::getInstance();
+		$this->_metabolic->debug( true );
 	}
 
 	public function tearDown(): void {

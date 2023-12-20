@@ -166,12 +166,17 @@ final class Metabolic {
 	 * Commit all queued meta calls.
 	 */
 	public function commit(): bool {
+		if ( ! $this->deferring ) {
+			throw new \Exception( 'Metabolic::commit not deferring.' );
+		}
 	}
 
 	/**
 	 * Discard all queued meta calls, reset queue state.
 	 */
 	public function flush(): void {
+		$this->builder->flush();
+		$this->queue = [];
 	}
 
 	/**
@@ -237,9 +242,9 @@ final class Metabolic {
 		}
 
 		$this->_remove_filters();
+		$this->flush();
 		$this->deferring = false;
 		$this->tracer->reset();
-		$this->queue = [];
 		$this->shutdown_completed = false;
 	}
 
@@ -316,6 +321,37 @@ final class Metabolic {
 		if ( ! $current_filter = current_filter() ) {
 			throw new \Exception( 'Metabolic::_interrupt called with no filter.' );
 		}
+
+		if ( ! preg_match( '#^get_(post|comment|term|user)_metadata$#', $current_filter, $matches ) ) {
+			throw new \Exception( "MetabolicMetabolic::_interrupt called with invalid filter: $current_filter" );
+		}
+
+		if ( ! $this->deferring ) {
+			throw new \Exception( 'Metabolic::_interrupt not deferring.' );
+		}
+
+		list( $_, $type ) = $matches;
+
+		if ( empty( $args = func_get_args() ) ) {
+			throw new \Exception( "Metabolic::_interrupt called with empty arguments for $current_filter" );
+		}
+
+		if ( count( $args ) !== 5 ) {
+			throw new \Exception( "Metabolic::_interrupt called with unexpected number of arguments for $current_filter" );
+		}
+
+		// get: $check, $object_id, $meta_key, $single, $meta_type
+		list( $check, $object_id, $meta_key, $single, $meta_type ) = $args;
+
+		if ( $meta_type !== $type ) {
+			throw new \Exception( "Metabolic::_interrupt called with mismatched \$meta_type ($meta_type != $type)" );
+		}
+
+		if ( $check !== null ) {
+			throw new \Exception( "Metabolic::_interrupt called with failing short-circuit check for $current_filter" );
+		}
+
+		// TODO: implement
 	}
 
 	/**
